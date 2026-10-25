@@ -15,8 +15,11 @@ The plugin can append advice just before an active writer's next model request:
 - **Optional repetition trigger:** after repeated identical tool inputs and
   textual results, suggest reconsidering the next action. This is separate
   opt-in behavior, not a step limit or a claim that every repetition is wrong.
+- **Reloadable deterministic rules:** opt into a private JSON rule catalog for
+  precise repeated-outcome cases and nudge text, without an adviser model.
+  Valid trusted edits apply at the next active context boundary.
 
-All three are off by default. Nothing sends a user message, interrupts a writer,
+All modes are off by default. Nothing sends a user message, interrupts a writer,
 resumes a session, runs writer tools, or approves/rejects implementation.
 Advice does not enforce a sandbox or replace executable acceptance checks.
 
@@ -125,11 +128,11 @@ distro package as a fallback.
 
 The plugin comes from the latest stable plugin release's single verified
 `.tgz`, when available. Otherwise it resolves `main` **once** to an immutable
-Git commit and fetches only the six runtime/docs/license files, checking their
+Git commit and fetches only the eight runtime/example/docs/license files, checking their
 Git blob hashes against that commit's tree. It prints the selected revision;
 an unreleased commit is not described as an npm release. No npm registry,
 Actions authentication, build, or additional Effect dependency is required.
-Tar archives permit only those six bounded regular files: links, traversal,
+Tar archives permit only those eight bounded regular files: links, traversal,
 extra members and oversized expansion are rejected. Files are staged before
 promotion into a read-only, versioned directory under
 `${XDG_DATA_HOME:-$HOME/.local/share}/openchamber/advisory-nudges`.
@@ -147,8 +150,8 @@ explicitly rather than deleting settings. If a later configuration write fails,
 the desktop may already be updated: the error must be resolved, not interpreted
 as a fully successful plugin install.
 
-**Installed does not mean activated.** New registrations have timer, observer
-and repetition **all off**, with no invented scopes/audit path. Existing managed
+**Installed does not mean activated.** New registrations have timer, observer,
+repetition and rules **all off**, with no invented scopes/audit path. Existing managed
 options are preserved, never globally enabled by the installer. At a quiet
 boundary, opt into timer-only using the exact session/provider/model/location
 and owner-private audit configuration below; keep observer/repetition off.
@@ -249,7 +252,7 @@ selectors and isolation. Empty selectors and `"*"` are **not** global scope.
 `scope:"all"` and `locations` cannot be combined, even with `locations:[]`.
 Remove the entire `locations` key when choosing global scope.
 
-Global mode supports the timer and optional deterministic repetition only.
+Global mode supports the timer, deterministic repetition and reloadable rules.
 **`scope:"all"` with `observer.enabled:true` is rejected**, preventing an
 all-model selection from advising its own observer generations. The example
 below is timer-only every 60 seconds; it makes no second-model requests.
@@ -331,6 +334,229 @@ safe-boundary operations: they cannot preempt an active model call, and pending
 advice is discarded when the plugin unloads. Confirm the plugin unload record
 in the audit and that unrelated profile fields are unchanged. Keep existing
 session history and audit files; no reset or deletion is needed.
+
+## Reloadable cases and prompts (explicit opt-in)
+
+Use a dedicated, owner-private **strict JSON data file**, outside every
+monitored writer directory and its tool write allowlists. There is no executable
+configuration, model-authored auto-enrollment or filesystem read instruction in
+a rule. A trusted maintainer/user can extend the catalog; the monitored writer
+must not be authorized to rewrite its own guardrails. Path separation and Unix
+checks are not an OS sandbox against another process running as the same user.
+
+Prepare the provided starter catalog **from a trusted checkout** (or copy
+`rules.example.json` from the installed package directory). These are new
+private files; choose another name instead of overwriting existing user data:
+
+```sh
+( umask 077
+  mkdir -p "$HOME/.local/state/opencode-advisory-nudges" &&
+  python3 - "$HOME/.local/state/opencode-advisory-nudges/rules.json" <<'PY'
+import os, pathlib, sys
+source = pathlib.Path("rules.example.json").read_bytes()
+with open(sys.argv[1], "xb") as output:
+    output.write(source)
+print("rules.file:", sys.argv[1])
+print("auditPath:", os.path.join(os.path.dirname(sys.argv[1]), "audit.jsonl"))
+PY
+)
+```
+
+Check existing directory ownership/mode as described above. At a quiet
+boundary, back up and edit just your registration's `options` (keep `package`),
+substituting the **printed absolute paths**:
+
+```json
+{
+  "scope": "all",
+  "auditPath": "/absolute/private-directory/audit.jsonl",
+  "timer": { "enabled": true, "everyMs": 60000 },
+  "repetition": { "enabled": false },
+  "observer": { "enabled": false },
+  "rules": { "enabled": true, "file": "/absolute/private-directory/rules.json" }
+}
+```
+
+Remove `locations` for global scope. Initial option/registration changes still
+need a quiet host reload. **Subsequent rules-file edits do not**: the plugin
+reads a bounded stable snapshot at every eligible natural model-request/context
+boundary, including consecutive callbacks in the same user turn. An already
+qualifying new rule is considered then, without waiting for the timer. Nothing
+polls while idle or preempts a healthy model/tool call. Rules also work with
+`timer.enabled:false`, independently of repetition and the observer.
+
+### Version 1 data schema
+
+```json
+{
+  "version": 1,
+  "revision": "my-cases-2",
+  "window": 12,
+  "rules": [
+    {
+      "id": "same-missing-read",
+      "enabled": true,
+      "kind": "repeat",
+      "match": { "operation": ["read"], "status": ["error"], "outputPattern": "ENOENT" },
+      "threshold": 3,
+      "cooldownMs": 60000,
+      "nudge": "Recheck the task and exact path. Create a new file only if independently authorized."
+    }
+  ],
+  "observerGuidance": ["Verify actual evidence; a planned file need not exist."]
+}
+```
+
+Only the keys shown/defined here are accepted. `version` is exactly `1`;
+`revision` is a nonempty label (80 characters max), while a SHA256 of the
+**complete file bytes** identifies the actual active revision. `window` is
+2-32 current-turn outcomes (default 12). `rules` is an array of 0-24 cases;
+an empty array removes deterministic cases. Unique stable IDs match
+`[a-z][a-z0-9-]{0,63}`. `enabled:false` disables a case, not the file watcher.
+
+`kind:"repeat"` requires 2-`window` consecutive **identical full input/output
+hashes**, matching conditions, and no intervening tool outcome or new writer
+statement. `threshold` defaults to 3. It does not mistake changed paths,
+changing polling output, different retries, writes or reported progress for the
+same pattern. Identical polling can still be intentional: the advice is
+conditional, not a defect verdict. `kind:"failed-claim"` instead requires
+`threshold:1`, `match.status:["error"]`, and an explicit `claimPattern` matching
+the latest retained writer statement **after** the latest failed tool outcome.
+It cannot infer completion intent from an earlier statement or successful tool.
+
+`match` is an AND of supplied fields:
+
+| Field | Meaning |
+| --- | --- |
+| `tool` | Exact native tool names, array of 1-8 strings |
+| `operation` | Exact normalized operation, array: known read/read_file, edit/edit_file, write/write_file, bash/shell names map to `read`, `edit`, `write`, `shell`; other names are unknown |
+| `status` | Exact native result discriminant (`error`, `text`, etc.), array |
+| `code` | Exact structured `result.value.error.code` or `result.value.code`, array; never fabricated from text |
+| `path` | Exact reported input `filePath`/`path` string (max 512 chars), not a path to read |
+| `inputHash`, `outputHash` | Exact lowercase full-outcome SHA256, not excerpt equality |
+| `outputPattern` | Optional safe-dialect text matcher over the bounded output excerpt |
+
+At least `tool` or `operation` must be explicit. Unknown/missing structured
+fields do not match. Host-specific tool names/codes must be configured from
+actual protocol evidence. The starter catalog includes missing-file reads,
+stale-hash edits, structured denied/unsupported tools, unchanged reads and an
+explicit `All checks passed` claim after a shell error reporting the literal
+`required check failed`. An arbitrary shell error alone is not called a failed
+check. The starter claim matcher requires the entire retained statement to be
+`All checks passed` (optional final `.`/`!`), not quoted or negated language.
+Text-only `ENOENT`/`stale.hash` are conservative fallbacks **on error results**, not code
+inference. It does not detect nonexistent-file authorization, arbitrary
+nonzero exit codes hidden in unstructured successful text, every edit dialect,
+or whether an assistant's paraphrased completion claim is unsupported.
+
+`nudge` is a literal human-readable template (1-600 characters), followed by
+fixed factual evidence/count/hashes. There is **no interpolation, expression,
+callback, shell command or automatic action**. The same rule/evidence pair is
+warned once per execution/revision; `cooldownMs` (1,000-3,600,000, default 60,000)
+also separates different evidence for the same case. At most two rule nudges
+are appended per boundary, in catalog order. State retains at most one warning
+per configured rule per active execution. New valid content resets case
+deduplication, so an edited case can qualify immediately. New turns, model/agent
+changes, block/stop/delete and unload retain the existing invalidation rules.
+
+### Safe pattern dialect, not full JavaScript regex
+
+`outputPattern` and `claimPattern` are case-sensitive searches. Supported syntax:
+literal characters, escaped punctuation (`\\.`, `\\[`, etc.), `.`, `[abc]`,
+`[a-z]`, `[^abc]`, per-token `?`, `*`, `+`, leading `^` and trailing `$`.
+`.` includes newline. No flags, groups, alternation `|`, counted `{n}` repeats,
+lookaround, backreferences, shorthand `\\d`/`\\s`, class escapes or nested
+classes. Use `[0-9]` or `[ ]` instead. Unsupported syntax is **rejected**, not
+silently interpreted as unrestricted regex.
+
+Patterns are limited to 128 characters; class expansion is bounded. A static
+state-machine matcher (not `new RegExp`) evaluates up to 800 characters, with
+a shared **250,000 instruction budget per boundary** across rules. It has no
+recursive/backtracking search; a budget error discards that evaluation's
+rule nudges and is audited. No same-thread timeout/`Promise.race` pretends to
+interrupt regex. Tool excerpts retain at most 384 characters, writer statement
+800, path 512 and each input excerpt 192; matches never scan arbitrary files.
+Anchors apply to these excerpts, not unretained full logs. Full hashes are still
+used for equality. The entire rules file is capped at 32 KiB.
+
+### Trusted maintainer/assistant update workflow
+
+Automation may propose/edit data, not execute config or learn new rules from
+untrusted tool output automatically. From a trusted checkout, copy the active
+file to a **distinct private candidate**, append/change cases using a JSON
+editor or a trusted script, and bump `revision`. Preserve unique stable IDs;
+do not overwrite the active file in place. Example candidate extension:
+
+```sh
+python3 - /absolute/private-directory/rules.json /absolute/private-directory/candidate.json <<'PY'
+import json, os, sys
+data = json.load(open(sys.argv[1]))
+data["revision"] = "my-cases-3"
+data["rules"].append({
+    "id": "custom-missing-target", "kind": "repeat", "threshold": 2,
+    "match": {"tool": ["read"], "status": ["error"], "code": ["ENOENT"], "path": "/exact/task/target"},
+    "nudge": "Verify this target against the authorized task before repeating the same failed read."
+})
+with open(sys.argv[2], "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
+    json.dump(data, output, indent=2)
+PY
+node scripts/update-rules.mjs /absolute/private-directory/candidate.json /absolute/private-directory/rules.json
+```
+
+The helper uses the runtime schema/permissions checker, rejects duplicate IDs,
+requires a revised label for changed contents, keeps a verified `0600` backup,
+fsyncs the candidate and atomically renames it after a concurrent-change check.
+The helper is a **checkout maintainer tool**, excluded from the runtime tarball.
+It does not edit the host profile or activate the mode. Preserve data/backups.
+
+Runtime reads use owner-only regular single-link files, no-follow opens and
+safe parent checks; inode/size/mtime/ctime must remain stable through the read.
+Invalid/missing/unsafe/oversized/mid-write updates generate `rules-rejected`
+with rejected identity and active SHA256. A previously valid catalog remains
+active (explicit last-known-good behavior); with none, deterministic rules do
+nothing and the rejection is visible. Repeated identical rejections are logged
+once until state changes. Accepted/removal/disablement edits log
+`rules-accepted`, invalidate old observer flights/advice, and are never replaced
+by an empty success-shaped fallback. Matching-budget errors are audited as
+`rules-evaluation-error`. A rejected update pauses observer attempts while
+retaining the last-good deterministic cases; restore a valid catalog to resume.
+Synchronous bounded evaluation has no pending worker/job to wake a session.
+
+### Optional small observer checklist (selected scope only)
+
+The same file accepts `observerGuidance`: at most eight literal hints, each
+160 characters, 800 total. Editing it reloads at the same boundary and cancels
+old-revision flights/advice. It never enables an observer or adds a second
+request path. Keep the existing bounded observer settings and separation:
+
+```json
+{
+  "locations": [{
+    "directory": "/absolute/project",
+    "sessions": ["EXACT_SESSION"],
+    "providers": ["WRITER_PROVIDER"],
+    "models": ["WRITER_MODEL"]
+  }],
+  "auditPath": "/absolute/private-directory/audit.jsonl",
+  "rules": { "enabled": true, "file": "/absolute/private-directory/rules.json" },
+  "observer": {
+    "enabled": true, "providerID": "DISTINCT_OBSERVER_PROVIDER", "modelID": "OBSERVER_MODEL",
+    "inputBudgetChars": 4000, "outputBudgetChars": 800, "minGapMs": 120000, "timeoutMs": 20000
+  }
+}
+```
+
+The fixed base prompt remains non-overridable: task/allowed-tool/evidence
+constraints, untrusted quoted tool/checklist data, no permission bypass or
+approval gate, and **one evidence-backed direction or `{"nudge":null}`**.
+Guidance adds at most 800 characters outside the existing bounded evidence
+digest; allowed-tool names are capped at 16 names of 64 characters. Existing
+rate limits, character budgets, freshness, cancellation and no-wake behavior
+remain. A delivered deterministic rule takes priority: any pending/ready
+observer advice is discarded and no observer is started at that boundary.
+This is deliberate suppression, not a claim of semantic deduplication.
+Global plus enabled observer remains rejected. No observer calls occur when
+it is off. Unit/fixture checks do not prove Qwen recovery or native loading.
 
 ## Observer configuration
 
@@ -471,8 +697,8 @@ model.
 The separate `entry.unit.test.mjs` uses an explicitly labeled Effect wiring
 test double to cover registration gates/disposal, not native compatibility.
 
-The package check creates a real npm tarball, requires exactly six members
-(`core.js`, `index.js`, `package.json`, both docs and `LICENSE`), installs it
+The package check creates a real npm tarball, requires exactly eight members
+(`core.js`, `index.js`, `rules.js`, `rules.example.json`, `package.json`, both docs and `LICENSE`), installs it
 offline into a clean path containing spaces with scripts disabled, verifies
 every installed byte, and resolves its ESM entry without importing it.
 It does **not** prove that the host loads the plugin or supplies Effect.
@@ -522,7 +748,7 @@ Node 22 and 24 on Ubuntu 22.04 and 24.04. It runs on pushes to `main` and
 `work-npm-packaging`, pull requests, or manual dispatch. There is no dependency
 installation, lockfile or build step.
 It also checks Bash syntax and runs the isolated Python installer tests;
-the installer and its tests remain excluded from the six-file npm tarball.
+the installer, maintainer helper and tests remain excluded from the eight-file npm tarball.
 
 `Release package` can be run manually from Actions on `main` with
 `publish_npm=false` to produce a downloadable `npm-package` artifact, retained

@@ -9,7 +9,7 @@ export default {
       yield* Effect.logWarning(`[advisory-nudges] disabled: ${errors.join('; ')}`);
       return;
     }
-    if ((!config.timer.enabled && !config.observer.enabled && !config.repetition.enabled)
+    if ((!config.timer.enabled && !config.observer.enabled && !config.repetition.enabled && !config.rules.enabled)
       || (config.scope !== 'all' && !config.locations.some((location) => location.directory === ctx.location.directory))) return;
 
     let audit;

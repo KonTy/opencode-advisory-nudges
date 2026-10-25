@@ -22,7 +22,7 @@ import time
 
 APP = "KonTy/openchamber"
 PLUGIN = "KonTy/opencode-advisory-nudges"
-FILES = {"core.js", "index.js", "package.json", "README.md", "DOCUMENTATION.md", "LICENSE"}
+FILES = {"core.js", "index.js", "rules.js", "rules.example.json", "package.json", "README.md", "DOCUMENTATION.md", "LICENSE"}
 API = "https://api.github.com/repos/"
 
 
@@ -190,7 +190,7 @@ def plugin_files(scratch):
             require(len(members) == len(FILES) and
                     {m.name for m in members} == {"package/" + n for n in FILES} and
                     all(m.isfile() and 0 < m.size <= 1_000_000 for m in members),
-                    "Unsafe plugin archive: expected six regular files only (no links or traversal)")
+                    "Unsafe plugin archive: expected eight regular files only (no links or traversal)")
             files = {m.name[8:]: tar.extractfile(m).read() for m in members}
         revision = "release-" + hashlib.sha256(raw).hexdigest()
         label = release["tag_name"]
@@ -279,7 +279,8 @@ def merge_config(obj, target, versions):
         plugins[found[0]]["package"] = str(target)
     else:
         plugins.append({"package": str(target), "options": {
-            "timer": {"enabled": False}, "observer": {"enabled": False}, "repetition": {"enabled": False}}})
+            "timer": {"enabled": False}, "observer": {"enabled": False}, "repetition": {"enabled": False},
+            "rules": {"enabled": False}}})
     return obj
 
 

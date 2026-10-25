@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "revision": "starter-1",
+  "window": 12,
+  "rules": [
+    {
+      "id": "same-missing-read",
+      "kind": "repeat",
+      "match": { "operation": ["read"], "status": ["error"], "outputPattern": "ENOENT" },
+      "threshold": 3,
+      "nudge": "The same read still reports ENOENT. Recheck the task and exact path before another identical read. Do not create a file unless the user/task independently authorizes that new file."
+    },
+    {
+      "id": "stale-edit",
+      "kind": "repeat",
+      "match": { "operation": ["edit"], "status": ["error"], "outputPattern": "stale.hash" },
+      "threshold": 2,
+      "nudge": "The edit reports a stale hash repeatedly. Re-read the current target with an allowed tool and reconcile the actual change before retrying; do not overwrite unrelated edits."
+    },
+    {
+      "id": "denied-tool",
+      "kind": "repeat",
+      "match": { "status": ["error"], "code": ["EACCES", "EPERM", "TOOL_DENIED", "TOOL_UNSUPPORTED"], "tool": ["read", "edit", "write", "bash", "shell"] },
+      "threshold": 2,
+      "nudge": "The same tool request is denied or unsupported. Respect the restriction: use an already allowed alternative or report the blocker. Never bypass permissions or confinement."
+    },
+    {
+      "id": "unchanged-read",
+      "kind": "repeat",
+      "match": { "operation": ["read"], "status": ["text"] },
+      "threshold": 4,
+      "nudge": "Repeated identical reads have produced unchanged evidence and no intervening reported progress. Check whether the task needs an authorized implementation/check step instead. Polling may be intentional; this is not proof of a defect."
+    },
+    {
+      "id": "failure-completion-claim",
+      "kind": "failed-claim",
+      "match": { "operation": ["shell"], "status": ["error"], "outputPattern": "required check failed" },
+      "claimPattern": "^All checks passed[.!]?$",
+      "nudge": "The latest shell outcome is a reported failure, followed by an explicit all-checks-passed claim. Reconcile that failure with the claim and actual required checks before reporting completion. Tool errors are not an approval verdict."
+    }
+  ],
+  "observerGuidance": [
+    "Missing-file retries do not authorize new files; verify the actual task and path.",
+    "Prefer one concrete evidence-backed direction or no-op; do not duplicate a deterministic rule."
+  ]
+}

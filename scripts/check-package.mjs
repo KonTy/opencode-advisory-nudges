@@ -6,7 +6,7 @@ import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const expected = ['DOCUMENTATION.md', 'LICENSE', 'README.md', 'core.js', 'index.js', 'package.json'].sort();
+const expected = ['DOCUMENTATION.md', 'LICENSE', 'README.md', 'core.js', 'index.js', 'rules.js', 'rules.example.json', 'package.json'].sort();
 const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 assert.equal(manifest.name, 'opencode-advisory-nudges');
 assert.match(manifest.version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
@@ -53,7 +53,7 @@ try {
     `console.log(import.meta.resolve(${JSON.stringify(manifest.name)}))`,
   ], { cwd: consumer, encoding: 'utf8' }).trim();
   assert.equal(fileURLToPath(entry), join(installed, 'index.js'));
-  console.log(`Verified ${manifest.name}@${manifest.version}: exact six files, byte-identical offline install and ESM entry resolution.`);
+  console.log(`Verified ${manifest.name}@${manifest.version}: exact eight files, byte-identical offline install and ESM entry resolution.`);
   console.log('This does not import the host-supplied Effect entry or validate native plugin loading.');
   if (process.argv[2]) {
     const output = resolve(process.argv[2]);

@@ -135,6 +135,9 @@ class InstallerTests(unittest.TestCase):
             promoted = M.merge_config(merged, versions / ("commit-" + "c" * 40), versions)
             self.assertEqual(promoted["plugins"][1]["options"], global_options)
             self.assertEqual(promoted["providers"], obj["providers"])
+            global_options["rules"] = {"enabled": True, "file": str(home / "private/rules.json")}
+            promoted = M.merge_config(merged, versions / ("commit-" + "d" * 40), versions)
+            self.assertEqual(promoted["plugins"][1]["options"], global_options)
             config.write_text('{"changed":true}')
             with self.assertRaisesRegex(ValueError, "changed"):
                 M.commit_config(config, home, installed, updated)

@@ -1,6 +1,6 @@
 // Wiring-only Effect test double. This is NOT a native host/Effect compatibility test.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -53,16 +53,45 @@ test('entry registers global locations, preserves selected/default-off gates and
       assert.equal(finalizers.length, 0);
     }
     assert.equal(warnings.length, 2);
-    for (const directory of ['/new-project', '/future-project']) {
+    for (const directory of ['/new-project', '/future-project', '/rules-only-project']) {
       const auditPath = join(temp, directory.slice(1) + '.jsonl');
       await execute(plugin.effect({
-        options: { scope: 'all', timer: { enabled: true, everyMs: 60_000 }, auditPath },
+        options: directory === '/rules-only-project'
+          ? { scope: 'all', rules: { enabled: true, file: join(temp, 'rules.json') }, auditPath }
+          : { scope: 'all', timer: { enabled: true, everyMs: 60_000 }, auditPath },
         location: { directory },
         session: { hook }, permission: { hook }, tool: { hook },
         event: { subscribe: () => ({}) },
         generate: { text: () => assert.fail('global timer must not generate') },
       }));
       assert.deepEqual(registrations.map((r) => r.name), ['prompt', 'context', 'evaluate', 'execute.before']);
+      if (directory === '/rules-only-project') {
+        const rules = { version: 1, revision: 'entry-1', rules: [{
+          id: 'entry-read', kind: 'repeat', threshold: 2,
+          match: { operation: ['read'], status: ['error'] }, nudge: 'Inspect before repeating.',
+        }] };
+        const file = join(temp, 'rules.json');
+        writeFileSync(file, JSON.stringify(rules), { mode: 0o600 });
+        const contextHook = registrations.find((r) => r.name === 'context').callback;
+        const context = () => ({
+          sessionID: 's', model: { providerID: 'p', id: 'm' }, agent: 'writer', system: [],
+          messages: [{ id: 'u', role: 'user', content: [{ type: 'text', text: 'Authorized task' }] },
+            ...['1', '2'].flatMap((id) => [
+              { id: `a${id}`, role: 'assistant', content: [{ type: 'tool-call', id, name: 'read', input: { path: '/target' } }] },
+              { role: 'tool', content: [{ type: 'tool-result', id, result: { type: 'error', value: { code: 'ENOENT' } } }] },
+            ])],
+        });
+        const before = context();
+        await execute(contextHook(before));
+        assert.match(before.system[0].text, /Inspect before repeating/);
+        rules.revision = 'entry-2';
+        rules.rules[0].nudge = 'Changed on next context.';
+        writeFileSync(file, JSON.stringify(rules));
+        const after = context();
+        await execute(contextHook(after));
+        assert.match(after.system[0].text, /Changed on next context/);
+        assert.doesNotMatch(after.system[0].text, /Inspect before repeating/);
+      }
       for (const name of ['evaluate', 'execute.before']) {
         await execute(registrations.find((r) => r.name === name).callback({
           sessionID: 's', effect: 'ask', tool: 'question',

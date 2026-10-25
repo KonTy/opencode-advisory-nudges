@@ -6,13 +6,15 @@
   "files": [
     "core.js",
     "index.js",
+    "rules.js",
+    "rules.example.json",
     "README.md",
     "DOCUMENTATION.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test core.test.mjs entry.unit.test.mjs entry.test.mjs",
-    "check": "node --check core.js && node --check index.js",
+    "test": "node --test core.test.mjs rules.test.mjs entry.unit.test.mjs entry.test.mjs",
+    "check": "node --check core.js && node --check index.js && node --check rules.js && node --check scripts/update-rules.mjs",
     "check:package": "node scripts/check-package.mjs",
     "check:installer": "bash -n install.sh && python3 scripts/installer_test.py"
   },

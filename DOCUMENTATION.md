@@ -21,7 +21,7 @@ this module.
   npm-name resolution and installation through OpenChamber Settings have not
   yet been proved and require host-resolution verification before claiming
   one-step host installation.
-- The dependency-free package check verifies the exact six published members,
+- The dependency-free package check verifies the exact eight published members,
   an offline clean-consumer install, byte identity and ESM entry resolution.
   It does not import the host entry or prove native loading. The release
   workflow produces that verified tarball as an Actions artifact, attaches
@@ -71,12 +71,42 @@ this module.
   Nothing retains the complete message array or an in-memory audit history.
 - Audit files remain owner-private regular files, without following links.
   Audit failure is explicit and disables further context changes, not the writer.
+- Rules are opt-in data from a private file outside the monitored workspace.
+  Each active context boundary reads a stable no-follow snapshot (32 KiB max),
+  validates version/unique IDs/limits, and switches by content SHA256 rather
+  than timestamps or a host option reload. Rejected snapshots visibly retain
+  last-good deterministic cases and pause observers. Accepting changed data
+  cancels prior observer flights/advice and resets per-case deduplication.
+- The data pattern language deliberately excludes JavaScript regex groups,
+  alternation, assertions and backreferences. A non-backtracking state-machine
+  matcher enforces a shared instruction budget. There is no executable config,
+  imported module, eval, template expression, automatic enrollment from tool
+  text or unbounded pending regex job. The runtime gains `rules.js` and the
+  reviewed starter catalog, not an Effect dependency or worker process.
 - Native integration must verify outbound request text, lifecycle completion and
   real observer HTTP disconnection. Pure state tests cannot prove these.
 - Character limits and HTTP cancellation do not establish a model's token budget
   or GPU cancellation. Real-model validation is a separate gate.
 
 ## Decisions
+
+### Why hot-reload data rather than mutate host options or synthesize prompts
+
+The next natural context boundary can see maintainer edits in an active user
+turn. Rules use the existing evidence, selection, private audit and lifecycle
+machinery; there is no timer wait, session wake or command executor. Fixed
+outcome hashes plus consecutive-match/progress guards make retries precise,
+not an attempt to infer file-creation authority or semantic coding success.
+Structured codes/paths are used when actually exposed. Text fallback and
+completion claims require explicit bounded patterns and remain reported
+evidence, not independent verification. See README for complete version-1
+schema, safe-pattern dialect, exclusions and atomic maintainer helper.
+
+Observer hints are bounded literal data subordinate to fixed advisory, allowed
+tool and no-bypass constraints. Deterministic delivery suppresses the observer
+at that boundary; invalid/changed data cancels stale flights. Existing global
+observer prohibition, rate limits and cancellation remain. Tests are synthetic
+core/entry fixtures, not native-host proof or a Qwen recovery efficacy result.
 
 ### Why global selection is explicit and excludes the observer
 
