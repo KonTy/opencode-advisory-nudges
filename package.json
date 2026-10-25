@@ -1,0 +1,33 @@
+{
+  "name": "opencode-advisory-nudges",
+  "version": "0.1.0",
+  "description": "Opt-in OpenCode 2.1.4 advisory nudge plugin: timer audits, bounded repetition evidence and an optional non-authoritative observer, all default-off.",
+  "type": "module",
+  "files": [
+    "core.js",
+    "index.js",
+    "README.md",
+    "DOCUMENTATION.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test core.test.mjs entry.test.mjs",
+    "check": "node --check core.js && node --check index.js",
+    "check:package": "node scripts/check-package.mjs"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "keywords": [
+    "opencode",
+    "plugin",
+    "advisory",
+    "nudges",
+    "observer"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KonTy/opencode-advisory-nudges.git"
+  }
+}
