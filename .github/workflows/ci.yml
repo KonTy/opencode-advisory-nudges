@@ -31,4 +31,5 @@ jobs:
           package-manager-cache: false
       - run: npm run check
       - run: npm test
+      - run: npm run check:installer
       - run: npm run check:package

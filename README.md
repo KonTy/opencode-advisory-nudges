@@ -39,6 +39,128 @@ Source and npm tarballs can be installed locally and registered by absolute
 directory. A downloadable GitHub tarball is not an npm registry publication or
 proof that OpenChamber Settings can resolve the package name.
 
+## Install or update the Linux desktop and plugin together
+
+[`install.sh`](https://raw.githubusercontent.com/KonTy/opencode-advisory-nudges/main/install.sh)
+fetches the **latest stable** `KonTy/openchamber` GitHub release each time.
+It picks exactly one native package for `/etc/os-release` and the CPU:
+
+| System | CPUs | Package manager |
+| --- | --- | --- |
+| Arch / Arch-derived | x86_64 | `pacman -U` (`.pkg.tar.zst`) |
+| Debian / Ubuntu-derived | x86_64, aarch64 | `apt-get install` (`.deb`) |
+| Fedora / RHEL-derived with DNF, including Nobara | x86_64, aarch64 | `dnf install` (`.rpm`) |
+| openSUSE / SUSE-derived | x86_64, aarch64 | `zypper install` (`.rpm`) |
+
+Run as your ordinary desktop user, **not root**. Required tools: Bash,
+Python 3.9+, curl, `pkexec` with a working graphical Polkit agent, and that
+distro's native package tools (`vercmp` on Arch, `dpkg-deb`/`dpkg-query`/`dpkg`
+on Debian, `rpm` on RPM systems). Nothing installs these prerequisites for you.
+RPM files are verified against GitHub SHA256 metadata and `SHA256SUMS`;
+local unsigned RPMs are allowed for that verified file, not unsigned remote
+repositories. Arch's existing pacman signature policy is not weakened.
+
+**Quit OpenChamber, including its tray/background host, and OpenCode first.**
+The installer refuses detected running hosts. It never kills/restarts a host,
+launches a model, replaces the existing OpenChamber CLI, or changes providers,
+models, session history, credentials, or unrelated plugin settings.
+Package installation itself is the normal trusted distro package operation,
+including the release's maintainer scripts and dependency resolution.
+Only that package-manager command runs through `pkexec`; plugin files and
+configuration remain user-owned. Cancellation/errors stop the installer;
+there is no sudo, terminal-password or root-shell fallback.
+
+### Select the actual local host configuration
+
+`--config` is required: do not assume an Electron settings file is an OpenCode
+profile. The reviewed **packaged v2.5.2** source uses OpenCode's
+`OPENCODE_CONFIG_DIR`, otherwise `$XDG_CONFIG_HOME/opencode`, otherwise
+`~/.config/opencode`, plus the optional `OPENCODE_CONFIG` layer.
+The desktop imports its login-shell environment, which may differ from the
+terminal. Verify your local host's environment/configuration in OpenChamber
+before selecting its absolute `opencode.json`. A remote/SSH host has its own
+profile and is **not** configured by this installer. If the local desktop
+really uses the standard default, the commands below are appropriate; replace
+the argument otherwise. This global OpenCode profile may also be read by an
+existing OpenCode CLI; the installer does not relocate or replace that CLI.
+
+Reviewed source contracts:
+[config directory/layers](https://github.com/KonTy/openchamber/blob/v2.5.2/packages/web/server/lib/opencode/shared.js),
+[native directory loader](https://github.com/KonTy/openchamber/blob/v2.5.2/packages/web/server/lib/opencode/managed-plugin-config.js),
+[v2 plugin objects](https://github.com/KonTy/openchamber/blob/v2.5.2/packages/web/server/lib/opencode/config-v2.js),
+[desktop login environment](https://github.com/KonTy/openchamber/blob/v2.5.2/packages/electron/main.mjs),
+[CLI-preserving package scripts](https://github.com/KonTy/openchamber/blob/v2.5.2/packages/electron/resources/linux/after-install.tpl).
+Every run also checks that the latest desktop still declares bundled OpenCode
+2.1.4. A newer incompatible host fails clearly instead of choosing an older
+desktop or pretending compatibility.
+
+Prefer downloading, inspecting, then running (the `&&` prevents execution
+after a failed download):
+
+```sh
+curl -fL --proto '=https' --proto-redir '=https' \
+  -o install-openchamber.sh \
+  https://raw.githubusercontent.com/KonTy/opencode-advisory-nudges/main/install.sh &&
+less install-openchamber.sh &&
+bash install-openchamber.sh --config "$HOME/.config/opencode/opencode.json" --dry-run
+```
+
+Remove `--dry-run` after reviewing the plan. Or, when you trust the live script
+and have confirmed the profile, install/update in one command:
+
+```sh
+curl -fsSL --proto '=https' --proto-redir '=https' \
+  https://raw.githubusercontent.com/KonTy/opencode-advisory-nudges/main/install.sh |
+  bash -s -- --config "$HOME/.config/opencode/opencode.json"
+```
+
+The installer checks the downloaded desktop package against both its published
+GitHub SHA256 digest and the release's verified `SHA256SUMS`, then validates
+native package name/architecture/version before requesting privileges. It
+skips an equal/newer installed native package rather than downgrading it.
+Checksums establish consistency with the trusted GitHub release, not an
+independent publisher signature. Unsupported/ambiguous assets, missing hashes,
+HTTP failures and incompatible hosts are errors; it does not install a foreign
+distro package as a fallback.
+
+The plugin comes from the latest stable plugin release's single verified
+`.tgz`, when available. Otherwise it resolves `main` **once** to an immutable
+Git commit and fetches only the six runtime/docs/license files, checking their
+Git blob hashes against that commit's tree. It prints the selected revision;
+an unreleased commit is not described as an npm release. No npm registry,
+Actions authentication, build, or additional Effect dependency is required.
+Tar archives permit only those six bounded regular files: links, traversal,
+extra members and oversized expansion are rejected. Files are staged before
+promotion into a read-only, versioned directory under
+`${XDG_DATA_HOME:-$HOME/.local/share}/openchamber/advisory-nudges`.
+
+Only after preflight and successful native package installation does it merge
+the absolute plugin directory into `plugins`, using a verified owner-private
+backup and atomic replacement of the selected config. Existing managed plugin
+options and all unrelated fields are preserved. Repeat runs do not duplicate
+registrations or rewrite an unchanged config. Existing snapshots and settings
+backups are retained; only owned temporary downloads/staging are cleaned.
+Symlinks, foreign/writable-by-others paths, hardlinked configs, JSONC siblings,
+comments/duplicate JSON keys, inline config overrides, and conflicting
+unmanaged registrations are refused without rewriting them. Resolve these
+explicitly rather than deleting settings. If a later configuration write fails,
+the desktop may already be updated: the error must be resolved, not interpreted
+as a fully successful plugin install.
+
+**Installed does not mean activated.** New registrations have timer, observer
+and repetition **all off**, with no invented scopes/audit path. Existing managed
+options are preserved, never globally enabled by the installer. At a quiet
+boundary, opt into timer-only using the exact session/provider/model/location
+and owner-private audit configuration below; keep observer/repetition off.
+Start the host yourself and verify its plugin registry/audit. This installer
+does not prove native loading, one-step Settings installation or loop recovery.
+
+Installer tests mock commands/downloads and use isolated temporary profiles;
+no workstation package installation or real profile mutation is part of CI.
+The release metadata/checksum inventory and public DEB control metadata were
+also inspected read-only. These checks are not a real installation or a claim
+that every distro, CPU or compositor was exercised.
+
 ### Install a packaged tarball without distro-specific tooling
 
 Use an existing Node.js/npm installation. Download the `.tgz` from a successful
@@ -262,6 +384,7 @@ audit files; no reset or deletion is needed.
 npm run check
 npm test
 npm run check:package
+npm run check:installer
 ```
 
 Run these inside this folder. Core tests use a deterministic clock and
@@ -320,6 +443,8 @@ suite is explicitly skipped), and the offline package/consumer check for
 Node 22 and 24 on Ubuntu 22.04 and 24.04. It runs on pushes to `main` and
 `work-npm-packaging`, pull requests, or manual dispatch. There is no dependency
 installation, lockfile or build step.
+It also checks Bash syntax and runs the isolated Python installer tests;
+the installer and its tests remain excluded from the six-file npm tarball.
 
 `Release package` can be run manually from Actions on `main` with
 `publish_npm=false` to produce a downloadable `npm-package` artifact, retained
