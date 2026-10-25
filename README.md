@@ -647,6 +647,14 @@ coalesce into one audit at the next eligible boundary. There is no idle polling
 or timer that can wake a session. A single long model request or tool cannot be
 nudged mid-call; delivery waits for its natural next request.
 
+Timer wording does not include elapsed seconds: unchanged repetition evidence
+produces byte-identical timer advice at successive due boundaries. Actual
+repetition evidence still changes when the observed outcomes change. Delivery
+audit records carry `timer.elapsedMs` (since this execution epoch began) and
+`timer.sinceLastReminderMs` instead. This removes clock-only prompt variation;
+it does not guarantee prefix-cache hits, lower latency or reduced token usage.
+Other context, advice, host serialization and server cache policy can differ.
+
 ## Logs, lifecycle and disable
 
 The private JSONL file records context-appended text, source, resolved writer

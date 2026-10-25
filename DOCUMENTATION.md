@@ -64,6 +64,10 @@ this module.
   Unknown non-text output never supplies repetition evidence.
 - Timer cadence is elapsed/coalesced, not message-count based. Repetition needs
   actual equal input/output pairs; neither mode imposes a work limit.
+  Elapsed time stays in delivery audit metadata (`timer.elapsedMs` and
+  `timer.sinceLastReminderMs`), not the model-facing timer wording. Identical
+  evidence therefore yields identical timer text despite clock changes.
+  Real repetition evidence is not frozen; no server cache-hit claim follows.
 - Observer responses are suggestions or explicit no-ops. Scope, epoch, freshness,
   age, duplicate and recursive-output checks precede delivery.
 - One execution retains at most the configured fact window, that window's

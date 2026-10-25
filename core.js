@@ -460,7 +460,7 @@ export function createAdvisoryState(config, generateText, directory, {
     if (config.timer.enabled && time - run.lastReminderAt >= config.timer.everyMs) {
       delivered.push({
         source: 'timer',
-        text: `Progress audit after ${Math.floor((time - run.startedAt) / 1_000)}s: compare the implementation with the user's objective and actual evidence, including failed checks. State what is done, what remains, and the next concrete action. ${repetitionEvidence(sample, config.repetition.threshold)}`,
+        text: `Progress audit: compare the implementation with the user's objective and actual evidence, including failed checks. State what is done, what remains, and the next concrete action. ${repetitionEvidence(sample, config.repetition.threshold)}`,
       });
     }
     const signatures = new Set(sample.facts.slice(-config.repetition.window).map((fact) => fact.signature).filter(Boolean));
@@ -480,9 +480,14 @@ export function createAdvisoryState(config, generateText, directory, {
     }
     if (delivered.length) {
       const text = renderNudges(delivered);
-      if (!record({ event: 'context-delivery', sessionID: event.sessionID, model: event.model, agent: event.agent, sources: delivered.map((nudge) => nudge.source), rulesRevision, text })) return [];
+      const timerDelivered = delivered.some((nudge) => nudge.source === 'timer');
+      if (!record({
+        event: 'context-delivery', sessionID: event.sessionID, model: event.model, agent: event.agent,
+        sources: delivered.map((nudge) => nudge.source), rulesRevision, text,
+        ...(timerDelivered ? { timer: { elapsedMs: time - run.startedAt, sinceLastReminderMs: time - run.lastReminderAt } } : {}),
+      })) return [];
       event.system.push({ type: 'text', text });
-      if (delivered.some((nudge) => nudge.source === 'timer')) run.lastReminderAt = time;
+      if (timerDelivered) run.lastReminderAt = time;
       if (delivered.some((nudge) => nudge.source === 'repetition')) run.warned.add(repeated);
       for (const nudge of delivered) if (nudge.key) run.delivered = [...run.delivered.slice(-63), nudge.key];
       for (const nudge of delivered) if (nudge.ruleID) run.ruleWarnings.set(nudge.ruleID, { key: nudge.ruleKey, at: time });

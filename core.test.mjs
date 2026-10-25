@@ -222,6 +222,39 @@ test('timer uses elapsed active execution time, coalesces ticks, and has no run 
   h.api.teardown();
 });
 
+test('60-second timer keeps identical evidence byte-stable across elapsed times, with timing only in audit metadata', () => {
+  const h = setup({ timer: { enabled: true, everyMs: 60_000 } });
+  h.event('session.execution.started');
+  const messages = [user(), ...tool(1), ...tool(2), ...tool(3)];
+  assert.deepEqual(h.api.onContext(context(messages)), []);
+  h.advance(59_999);
+  assert.deepEqual(h.api.onContext(context(messages)), []);
+  h.advance(1);
+  const first = context(messages);
+  assert.deepEqual(h.api.onContext(first).map((n) => n.source), ['timer']);
+  assert.match(first.system[0].text, /Observed 3 identical read/);
+  assert.doesNotMatch(first.system[0].text, /after \d+s/);
+  h.advance(83_000);
+  const second = context(messages);
+  assert.deepEqual(h.api.onContext(second).map((n) => n.source), ['timer']);
+  assert.deepEqual(second.system, first.system, 'wall-clock changes alone must not change the injected bytes');
+  const records = h.records.filter((r) => r.event === 'context-delivery');
+  assert.deepEqual(records.map((r) => r.timer), [
+    { elapsedMs: 60_000, sinceLastReminderMs: 60_000 },
+    { elapsedMs: 143_000, sinceLastReminderMs: 83_000 },
+  ]);
+  h.advance(59_999);
+  assert.deepEqual(h.api.onContext(context(messages)), []);
+  h.advance(1);
+  const changed = context([user(), ...tool(1), ...tool(2), ...tool(3, { output: 'changed content' })]);
+  assert.deepEqual(h.api.onContext(changed).map((n) => n.source), ['timer']);
+  assert.doesNotMatch(changed.system[0].text, /Observed 3 identical read/);
+  assert.notDeepEqual(changed.system, first.system, 'actual changed repetition evidence must not be frozen');
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.scheduled.size, 0);
+  h.api.teardown();
+});
+
 test('all selected dimensions must match; default-off performs no context work', () => {
   for (const extra of [
     { sessionID: 'ses_other' }, { agent: 'other' },
