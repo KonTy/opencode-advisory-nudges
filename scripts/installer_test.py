@@ -128,6 +128,13 @@ class InstallerTests(unittest.TestCase):
             updated = M.merge_config(merged, versions / ("commit-" + "b" * 40), versions)
             self.assertTrue(updated["plugins"][1]["options"]["timer"]["enabled"])
             self.assertEqual(len(updated["plugins"]), 2)
+            global_options = {"scope": "all", "auditPath": str(home / "private/audit.jsonl"),
+                              "timer": {"enabled": True, "everyMs": 60000},
+                              "observer": {"enabled": False}, "repetition": {"enabled": False}}
+            merged["plugins"][1]["options"] = global_options
+            promoted = M.merge_config(merged, versions / ("commit-" + "c" * 40), versions)
+            self.assertEqual(promoted["plugins"][1]["options"], global_options)
+            self.assertEqual(promoted["providers"], obj["providers"])
             config.write_text('{"changed":true}')
             with self.assertRaisesRegex(ValueError, "changed"):
                 M.commit_config(config, home, installed, updated)

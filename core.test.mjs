@@ -38,8 +38,10 @@ const deferred = () => {
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 };
-function setup(overrides = {}, generate = () => Promise.resolve('{"nudge":null}')) {
-  const parsed = parseOptions(options(overrides));
+function setup(overrides = {}, generate = () => Promise.resolve('{"nudge":null}'), location = directory) {
+  const raw = options(overrides);
+  if (raw.locations === undefined) delete raw.locations;
+  const parsed = parseOptions(raw);
   assert.deepEqual(parsed.errors, []);
   let time = 10_000;
   let sequence = 0;
@@ -48,7 +50,7 @@ function setup(overrides = {}, generate = () => Promise.resolve('{"nudge":null}'
   const api = createAdvisoryState(parsed.config, (prompt, signal) => {
     calls.push({ prompt, signal });
     return generate(prompt, signal);
-  }, directory, {
+  }, location, {
     now: () => time,
     emit: (record) => records.push(record),
     reportError: (message) => errors.push(message),
@@ -63,10 +65,123 @@ function setup(overrides = {}, generate = () => Promise.resolve('{"nudge":null}'
   };
   const event = (type, extra = {}) => api.handleEvent({
     id: `evt-${++sequence}`, created: time, type,
-    data: { sessionID: 'ses_A' }, location: { directory }, ...extra,
+    data: { sessionID: 'ses_A' }, location: { directory: location }, ...extra,
   });
   return { api, records, errors, calls, advance, event, scheduled };
 }
+
+const globalOptions = { scope: 'all', locations: undefined };
+
+test('all scope is explicit, default-off, requires audit, rejects selectors and observer', () => {
+  assert.equal(parseOptions().config.scope, 'selected');
+  assert.equal(parseOptions({ scope: 'all' }).config.timer.enabled, false);
+  for (const input of [
+    { scope: null }, { scope: '*' }, { scope: true },
+    { scope: 'all', locations: [] }, { scope: 'all', locations: [scope] },
+    { scope: 'all', timer: { enabled: true } },
+    { scope: 'all', auditPath: 'relative', timer: { enabled: true } },
+    { scope: 'all', auditPath: '/private/audit', observer: observer() },
+  ]) assert.equal(parseOptions(input).config, null, JSON.stringify(input));
+});
+
+test('global timer covers new sessions, directories and provider/models independently without observer calls', () => {
+  for (const location of ['/project-one', '/project-two']) {
+    const h = setup(globalOptions, () => assert.fail('global mode must never generate'), location);
+    for (const id of ['new-session', 'future-session']) {
+      const event = () => context([user(id)], {
+        sessionID: id, model: { providerID: id, id: location }, agent: id,
+      });
+      assert.deepEqual(h.api.onContext(event()), []);
+      h.advance(1_000);
+      const next = event();
+      assert.deepEqual(h.api.onContext(next).map((n) => n.source), ['timer']);
+      assert.deepEqual(h.api.onContext(next), []);
+    }
+    assert.equal(h.api.state.runs.size, 2);
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.scheduled.size, 0);
+    h.api.teardown();
+    assert.equal(h.api.state.runs.size, 0);
+    assert.equal(h.api.state.prompts.size, 0);
+    h.advance(100_000);
+    assert.deepEqual(h.api.onContext(context()), []);
+  }
+});
+
+test('global timer resets on provider/model/agent and user changes, suppresses queued stale contexts', () => {
+  const h = setup(globalOptions);
+  h.api.onContext(context());
+  h.advance(1_000);
+  const changed = { providerID: 'new-provider', id: 'new-model' };
+  assert.deepEqual(h.api.onContext(context([user()], { model: changed, agent: 'new-agent' })), []);
+  h.advance(1_000);
+  assert.equal(h.api.onContext(context([user()], { model: changed, agent: 'new-agent' })).length, 1);
+  h.api.onPrompt({ sessionID: 'ses_A', messageID: 'next' });
+  h.advance(60_000);
+  assert.deepEqual(h.api.onContext(context()), []);
+  assert.deepEqual(h.api.onContext(context([user('next')])), []);
+  h.advance(1_000);
+  assert.equal(h.api.onContext(context([user('next')])).length, 1);
+  h.api.teardown();
+});
+
+test('global execution events respect directory ownership and start each future session timer', () => {
+  const h = setup(globalOptions);
+  h.event('session.execution.started', { data: { sessionID: 'future' }, location: { directory: '/another' } });
+  assert.equal(h.api.state.runs.size, 0);
+  h.event('session.execution.started', { data: { sessionID: 'future' } });
+  h.advance(1_000);
+  assert.equal(h.api.onContext(context([user()], { sessionID: 'future' })).length, 1);
+  h.api.teardown();
+  const off = setup({ ...globalOptions, timer: { enabled: false } });
+  off.advance(60_000);
+  assert.deepEqual(off.api.onContext(context([])), []);
+  assert.equal(off.api.state.runs.size, 0);
+  off.api.teardown();
+});
+
+test('global repetition deduplication stays per session and resets for a new objective', () => {
+  const h = setup({ ...globalOptions, timer: { enabled: false }, repetition: { enabled: true } });
+  const messages = [user(), ...tool(1), ...tool(2), ...tool(3)];
+  for (const sessionID of ['one', 'two']) {
+    assert.deepEqual(h.api.onContext(context(messages, { sessionID })).map((n) => n.source), ['repetition']);
+    assert.deepEqual(h.api.onContext(context(messages, { sessionID })), []);
+    assert.deepEqual(h.api.onContext(context([user('new'), ...tool(1), ...tool(2), ...tool(3)], { sessionID }))
+      .map((n) => n.source), ['repetition']);
+  }
+  assert.equal(h.calls.length, 0);
+  h.api.teardown();
+});
+
+test('global idle, blocked, terminal and deleted executions cannot schedule or wake work', () => {
+  for (const terminal of ['session.execution.succeeded', 'session.execution.failed', 'session.execution.interrupted', 'session.deleted', 'permission.asked']) {
+    const h = setup(globalOptions);
+    h.advance(60_000);
+    assert.equal(h.api.state.runs.size, 0);
+    h.api.onContext(context());
+    h.event(terminal, { created: 9_000 });
+    assert.equal(h.api.state.runs.size, 1, 'stale lifecycle event must not clear new execution');
+    h.event(terminal);
+    assert.equal(h.api.state.runs.size, 0);
+    const delivered = h.records.filter((r) => r.event === 'context-delivery').length;
+    h.advance(60_000);
+    assert.equal(h.api.state.runs.size, 0);
+    assert.equal(h.records.filter((r) => r.event === 'context-delivery').length, delivered);
+    assert.equal(h.scheduled.size, 0);
+    assert.equal(h.calls.length, 0);
+    assert.deepEqual(h.api.onContext(context([user('resumed-by-host')])), []);
+    h.api.teardown();
+  }
+  for (const reason of ['question-blocked', 'permission-blocked']) {
+    const h = setup(globalOptions);
+    h.api.onContext(context());
+    h.api.block('ses_A', reason);
+    h.advance(60_000);
+    assert.equal(h.api.state.runs.size, 0);
+    assert.equal(h.scheduled.size, 0);
+    h.api.teardown();
+  }
+});
 
 test('default options are off; explicit scope and private audit are mandatory', () => {
   const parsed = parseOptions();

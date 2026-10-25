@@ -232,12 +232,88 @@ their permissions. The host must support POSIX owner permissions and no-follow
 opens; the native integration was exercised on Linux. Unsupported hosts disable
 the plugin with an explicit error rather than weakening audit permissions.
 
-Every location requires a normalized absolute directory, explicit nonempty
+In selected scope, every location requires a normalized absolute directory, explicit nonempty
 session/provider/model lists, and exact matches to OpenCode's resolved IDs.
 Optional agent/variant lists further narrow selection; omitting them selects
 all agents/variants of the explicitly selected writer models. An empty session
 list is invalid, not a wildcard. Location matching selects behavior; it is **not
 a filesystem security boundary**.
+
+### Apply the timer to every project and session
+
+Set **`"scope": "all"`** explicitly to cover every provider/model, agent,
+project and current/future session in each OpenCode host loading this user
+configuration. You no longer need to enumerate session IDs or `locations`.
+Omitting `scope` (or setting `"scope":"selected"`) retains the existing exact
+selectors and isolation. Empty selectors and `"*"` are **not** global scope.
+`scope:"all"` and `locations` cannot be combined, even with `locations:[]`.
+Remove the entire `locations` key when choosing global scope.
+
+Global mode supports the timer and optional deterministic repetition only.
+**`scope:"all"` with `observer.enabled:true` is rejected**, preventing an
+all-model selection from advising its own observer generations. The example
+below is timer-only every 60 seconds; it makes no second-model requests.
+Private audit permissions remain mandatory.
+
+For an installer-created registration, quit the local host at a quiet
+boundary, back up the exact `--config` file with an owner-private copy and
+verify that backup, then edit **only the `options` object** of its existing
+`plugins` entry. Keep the installer's absolute `package` directory unchanged;
+do not add a second registration. This command creates the private audit
+directory and prints a ready-to-paste options object with your actual path:
+
+```sh
+( umask 077
+  mkdir -p "$HOME/.local/state/opencode-advisory-nudges" &&
+  python3 - <<'PY'
+import json, os
+print(json.dumps({
+    "scope": "all",
+    "auditPath": os.path.join(os.environ["HOME"], ".local/state/opencode-advisory-nudges/audit.jsonl"),
+    "timer": {"enabled": True, "everyMs": 60000},
+    "observer": {"enabled": False},
+    "repetition": {"enabled": False}
+}, indent=2))
+PY
+)
+```
+
+If the audit directory already exists, ensure it is owned by you, mode `0700`,
+and not a symlink; do not erase existing audit data. The plugin requires an
+owner-private regular audit file (`0600`) and refuses unsafe existing files.
+The resulting registration has this shape (use the generated audit path and
+keep your existing package path):
+
+```json
+{
+  "package": "/absolute/installed/plugin-directory",
+  "options": {
+    "scope": "all",
+    "auditPath": "/absolute/private-directory/audit.jsonl",
+    "timer": { "enabled": true, "everyMs": 60000 },
+    "observer": { "enabled": false },
+    "repetition": { "enabled": false }
+  }
+}
+```
+
+Reload/restart the host yourself only while quiet, then verify its plugin
+registry/audit. The installer still creates **default-off** registrations and
+preserves your existing global options on later updates; it does not activate
+this setting for you. To return to selected scope, remove `scope:"all"` (or set
+`"scope":"selected"`) and restore complete `locations` selectors.
+
+Global means **this user's configured host**, not every OS user, remote/SSH
+server or host that does not load this config. Project-level overrides may
+affect what the host loads. Each directory/session keeps independent timer
+and repetition state; changing user turns/models/agents resets its epoch.
+No idle, question/permission-blocked, completed, stopped or deleted session
+is awakened/resumed. No in-flight tool/model call is preempted: overdue ticks
+coalesce into advice at the next naturally active model-request boundary.
+This is broad applicability, not a global watchdog or loop-preemption switch.
+Global behavior has deterministic core and entry-wiring regression coverage,
+not new native-host validation; the private native fixture discovery blocker
+remains unresolved.
 
 Install, change or remove registrations only while the isolated host is quiet.
 Host configuration reload behavior is outside this plugin's control.
@@ -392,6 +468,8 @@ protocol shapes captured from the actual 2.1.4 host. The native suite is skipped
 unless `ADVISORY_NATIVE_TEST_CONFIG` names a private fixture configuration.
 It never mocks Effect, installs a plugin, starts a server, or dispatches a real
 model.
+The separate `entry.unit.test.mjs` uses an explicitly labeled Effect wiring
+test double to cover registration gates/disposal, not native compatibility.
 
 The package check creates a real npm tarball, requires exactly six members
 (`core.js`, `index.js`, `package.json`, both docs and `LICENSE`), installs it
@@ -438,7 +516,7 @@ These checks establish mechanisms, not improved coding quality or speed.
 
 ## CI and releases
 
-`CI` runs syntax checks, the 25 deterministic core tests (the private native
+`CI` runs syntax checks, deterministic core/entry-wiring tests (the private native
 suite is explicitly skipped), and the offline package/consumer check for
 Node 22 and 24 on Ubuntu 22.04 and 24.04. It runs on pushes to `main` and
 `work-npm-packaging`, pull requests, or manual dispatch. There is no dependency

@@ -26,7 +26,10 @@ export function parseOptions(raw = {}) {
     }
     return value;
   };
-  const root = object(raw, ['locations', 'timer', 'observer', 'repetition', 'auditPath'], 'options');
+  const root = object(raw, ['scope', 'locations', 'timer', 'observer', 'repetition', 'auditPath'], 'options');
+  const scope = root.scope ?? 'selected';
+  if (root.scope !== undefined && root.scope !== 'selected' && root.scope !== 'all') errors.push('scope must be selected or all');
+  if (scope === 'all' && Object.hasOwn(root, 'locations')) errors.push('scope all cannot be combined with locations (even empty)');
   const mode = (key) => {
     const defaults = DEFAULTS[key];
     const input = object(root[key], Object.keys(defaults), key);
@@ -71,20 +74,24 @@ export function parseOptions(raw = {}) {
     };
   });
   const enabled = timer.enabled || observer.enabled || repetition.enabled;
-  if (enabled && !locations.length) errors.push('enabled modes require explicit locations, sessions, providers and models');
+  if (enabled && scope !== 'all' && !locations.length) errors.push('enabled modes require explicit locations, sessions, providers and models');
   if (root.auditPath !== undefined && (typeof root.auditPath !== 'string' || !isAbsolute(root.auditPath))) errors.push('auditPath must be an absolute path');
   if (enabled && !root.auditPath) errors.push('enabled modes require a private auditPath');
   if (observer.enabled) {
+    if (scope === 'all') errors.push('scope all does not support observer; use selected scope with a distinct observer model');
     if (typeof observer.providerID !== 'string' || typeof observer.modelID !== 'string'
       || !observer.providerID.trim() || !observer.modelID.trim()) errors.push('observer requires providerID and modelID');
     if (locations.some((location) => location.providers.includes(observer.providerID) && location.models.includes(observer.modelID))) errors.push('observer must be distinct from the selected writer models');
   }
   return errors.length ? { config: null, errors } : {
-    config: { locations, timer, observer, repetition, auditPath: root.auditPath ?? null }, errors,
+    config: { scope, locations, timer, observer, repetition, auditPath: root.auditPath ?? null }, errors,
   };
 }
 
 export function isInScope(config, { sessionID, directory, model, agent }) {
+  if (config.scope === 'all') return typeof sessionID === 'string' && sessionID.length > 0
+    && typeof model?.providerID === 'string' && model.providerID.length > 0
+    && typeof model?.id === 'string' && model.id.length > 0;
   return config.locations.some((location) => location.directory === directory
     && location.sessions.includes(sessionID)
     && location.providers.includes(model?.providerID)
@@ -236,7 +243,8 @@ export function createAdvisoryState(config, generateText, directory, {
   const prompts = new Map();
   let disposed = false;
   let disabled = false;
-  const selected = (sessionID) => config.locations.some((location) => location.directory === directory && location.sessions.includes(sessionID));
+  const selected = (sessionID) => typeof sessionID === 'string' && sessionID.length > 0
+    && (config.scope === 'all' || config.locations.some((location) => location.directory === directory && location.sessions.includes(sessionID)));
   const record = (value) => {
     if (disabled) return false;
     try { emit({ at: now(), ...value }); return true; }

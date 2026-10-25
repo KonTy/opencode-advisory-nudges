@@ -11,7 +11,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test core.test.mjs entry.test.mjs",
+    "test": "node --test core.test.mjs entry.unit.test.mjs entry.test.mjs",
     "check": "node --check core.js && node --check index.js",
     "check:package": "node scripts/check-package.mjs",
     "check:installer": "bash -n install.sh && python3 scripts/installer_test.py"

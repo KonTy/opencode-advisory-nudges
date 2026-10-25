@@ -39,8 +39,15 @@ this module.
 
 ## Invariants
 
-- No mode runs without explicit location/session/provider/model selection and a
-  private audit sink. Defaults never register hooks or start an observer.
+- No mode runs without explicit location/session/provider/model selection OR
+  the explicit `scope:"all"` opt-in, and a private audit sink. Defaults never
+  register hooks or start an observer. Omitted scope means `selected`.
+- `all` rejects the presence of `locations` (including an empty list), rejects
+  enabled observers, and covers current/future sessions, providers/models and
+  agents within each host directory loading the user's config. There is no
+  wildcard or empty-selector fallback, no cross-user/remote-host deployment,
+  and no new scheduler/model invocation. Timer/repetition state remains per
+  session/directory and is invalidated by the existing epoch/lifecycle rules.
 - Only a selected native context callback can append advice. There are no
   prompt, resume, interrupt, writer-tool or approval calls.
 - The writer never awaits an observer. Generation and lifecycle consumption use
@@ -49,8 +56,8 @@ this module.
   separate tool-result messages. Native system parts use `type:"text"`.
   Persisted SessionMessage shapes are not a compatibility fallback.
 - Current-user identity and authoritative execution events define epochs. New
-  prompts and blocked/terminal work invalidate advice; unrelated sessions do
-  not gain state. A context hook is proof of an active boundary, never a reason
+  prompts and blocked/terminal work invalidate advice; unselected sessions do
+  not gain state. Global sessions have independent state. A context hook is proof of an active boundary, never a reason
   to wake an idle session.
 - Only current-user-turn, bounded recent facts feed audits and observer samples.
   Text-result equality hashes complete input/output, not truncated excerpts.
@@ -70,6 +77,17 @@ this module.
   or GPU cancellation. Real-model validation is a separate gate.
 
 ## Decisions
+
+### Why global selection is explicit and excludes the observer
+
+The user can opt into timer-only coverage without maintaining future session
+IDs. A distinct `scope:"all"` option preserves existing scoped installations;
+conflicting selectors fail rather than becoming ignored filters. An all-model
+observer could select its own generated context, so global plus enabled
+observer is rejected rather than introducing recursion or a hidden exception.
+The installer leaves new registrations off and preserves configured options.
+See the README's global timer-only example and quiet-boundary editing procedure.
+Core and entry-wiring unit coverage is not new native-host proof.
 
 ### Why native context boundaries and not synthetic user prompts
 
